@@ -1,0 +1,191 @@
+# Study configuration for every stage of the pipeline.
+#
+# Copy this file to configs/local.yaml (ignored by git) and set the paths
+# below to where the data, the group's code and pyPET are on your machine.
+# Everything else in this file is the study protocol and should stay as it is
+# to reproduce the thesis.
+
+paths:
+  # PMOD multi-frame DICOM exports, one file per scan, named dPET_dcm_<ID>.
+  dicom_folder: "/path/to/aif-mice-dicom-pet"
+  # The group's preprocessed data: AIF_SUV/, IMG_SUV_96x48x48/, VOI_SUV/.
+  group_data_folder: "/path/to/ML4PET_DLIF/data"
+  # Checkout of the group's DLIF repository (private; contains src/models and
+  # src/datahandlers). Only read, never copied into this repository.
+  group_code_folder: "/path/to/DLIF"
+  # Everything this pipeline writes.
+  work_folder: "/path/to/work_folder"
+  # Clone of pyPET (S. Kuttner, https://github.com/Kuttner/pyPET), which holds
+  # the kinetic models. GPL-3, so it is loaded from here and never copied in.
+  pypet_folder: "/path/to/pyPET"
+
+scans:
+  # Scans excluded from the study, taken from the group's training
+  # configuration: other tracers (FDOPA, PSMA), the Sherbrooke scans
+  # (another site and reconstruction grid), and 17 FDG scans excluded by
+  # the group.
+  excluded_ids: ["T1", "T2", "T3", "R2", "R3", "R4", "AE4", "AF1", "AF2", "Q2",
+                 "S4", "R1", "AE1", "AE2", "AE3", "N4", "P1", "AS1", "AS2",
+                 "AS4", "AT1", "AT2", "AT3", "AT4", "AU1", "AU2", "AU3",
+                 "Sherbrooke-A", "Sherbrooke-B", "Sherbrooke-C", "Sherbrooke-D",
+                 "Sherbrooke-E"]
+  # Shape of the network input the group distributes, (slices, rows, columns).
+  network_input_shape: [96, 48, 48]
+
+pvc:
+  # FWHM of the system PSF in mm, (x, y, z), measured on a static point
+  # source at the centre of the field of view of the LabPET-8 in the
+  # preceding phantom study.
+  fwhm_mm: [0.864, 0.874, 0.994]
+  # Relaxation parameter of reblurred Van Cittert, carried over from the
+  # phantom study.
+  rvc_relaxation: 1.5
+  # Number of PETPVC processes running at once (one frame each).
+  parallel_frames: 4
+  # Every correction the study uses. The same iteration count is applied to
+  # every frame of a scan, and PETPVC's stopping criterion is disabled, so
+  # exactly this many iterations are run. psf_scale multiplies fwhm_mm.
+  # The output folder is named <method>_i<iterations>, plus _psf0p90 etc.
+  # when psf_scale is not 1.
+  corrections:
+    - {method: RL,  iterations: 15, psf_scale: 1.0}   # primary
+    - {method: RVC, iterations: 15, psf_scale: 1.0}   # primary
+    - {method: RL,  iterations: 10, psf_scale: 1.0}   # sensitivity to k
+    - {method: RL,  iterations: 20, psf_scale: 1.0}
+    - {method: RVC, iterations: 10, psf_scale: 1.0}
+    - {method: RVC, iterations: 20, psf_scale: 1.0}
+    - {method: RL,  iterations: 15, psf_scale: 0.9}   # sensitivity to the PSF
+    - {method: RL,  iterations: 15, psf_scale: 1.1}
+    - {method: RVC, iterations: 15, psf_scale: 0.9}
+    - {method: RVC, iterations: 15, psf_scale: 1.1}
+    - {method: RL,  iterations: 3,  psf_scale: 1.0}   # pre-registered RL k = 3
+
+motion:
+  # FALCON (falconz) rigid registration of every frame to a late reference
+  # frame. Applied to every used scan: motion is present in all of them
+  # (visual review), and the amount comes from the transforms FALCON reports.
+  registration: rigid
+  # Frames before this index are not registered: they come before the bolus
+  # and contain too little anatomy to register on (fitted rotations of
+  # 2-9 degrees on AA1, against under 2 degrees afterwards).
+  start_frame: 5
+  # A frame whose fitted rotation exceeds this is counted as a failed
+  # registration in the QC table and left out of its motion summary.
+  rotation_suspect_deg: 2.0
+  # The PVC applied together with motion correction, in both orders.
+  pvc_correction: {method: RL, iterations: 15, psf_scale: 1.0}
+
+networks:
+  # Class names in the group's src/models/models.py. Both take one input
+  # channel and a 96 x 48 x 48 volume per frame.
+  fcdlif: DLIFNet_MAX            # FC-DLIF, Salomonsen et al. 2026
+  dlif2024: CNN3_1dConv3_linear  # DLIF2024, Kuttner et al. 2024
+
+training:
+  # The group's published protocol (EJNMMI Research 2026, src/config.yaml).
+  n_folds: 10
+  n_runs: 10
+  seed: 42
+  validation_fraction: 0.15
+  epochs: 1000
+  batch_size: 8
+  learning_rate: 0.0001
+  mixed_precision: true
+  poisson_noise: true
+  random_flip: true
+  # Weighted MSE: weight 0.4 on frames 0-24, 0.7 on 25-33, 1.0 on 34-41.
+  loss_frame_bounds: [0, 25, 34, 42]
+  loss_weights: [0.4, 0.7, 1.0]
+  # Input representations a network is trained on (stage 04 folder names).
+  trained_representations: [uncorrected, rl_i15, rvc_i15, rl_i3,
+                            mc_only, mc_then_rl_i15, rl_i15_then_mc]
+
+# Every predicted condition: the networks trained on `weights` are shown the
+# network inputs of `shown`. A condition with weights == shown is matched; the
+# others measure what happens when a network is shown a representation it was
+# not trained on. Each scan is predicted only by the networks of the fold that
+# held it out.
+conditions:
+  # Matched: retrained on each representation.
+  - {name: baseline,              weights: uncorrected,     shown: uncorrected}
+  - {name: rl,                    weights: rl_i15,          shown: rl_i15}
+  - {name: rvc,                   weights: rvc_i15,         shown: rvc_i15}
+  # Forward shift: trained on uncorrected images, shown corrected ones.
+  - {name: rl_forward_shift,      weights: uncorrected,     shown: rl_i15}
+  - {name: rvc_forward_shift,     weights: uncorrected,     shown: rvc_i15}
+  # Reverse shift: trained on corrected images, shown uncorrected ones.
+  - {name: rl_reverse_shift,      weights: rl_i15,          shown: uncorrected}
+  - {name: rvc_reverse_shift,     weights: rvc_i15,         shown: uncorrected}
+  # Sensitivity of the forward shift to the iteration count and the PSF.
+  - {name: rl_k10_forward_shift,  weights: uncorrected,     shown: rl_i10}
+  - {name: rl_k20_forward_shift,  weights: uncorrected,     shown: rl_i20}
+  - {name: rl_psf090_forward_shift, weights: uncorrected,   shown: rl_i15_psf0p90}
+  - {name: rl_psf110_forward_shift, weights: uncorrected,   shown: rl_i15_psf1p10}
+  - {name: rvc_k10_forward_shift, weights: uncorrected,     shown: rvc_i10}
+  - {name: rvc_k20_forward_shift, weights: uncorrected,     shown: rvc_i20}
+  - {name: rvc_psf090_forward_shift, weights: uncorrected,  shown: rvc_i15_psf0p90}
+  - {name: rvc_psf110_forward_shift, weights: uncorrected,  shown: rvc_i15_psf1p10}
+  # Pre-registered RL k = 3.
+  - {name: rl_k3,                 weights: rl_i3,           shown: rl_i3}
+  - {name: rl_k3_forward_shift,   weights: uncorrected,     shown: rl_i3}
+  - {name: rl_k3_reverse_shift,   weights: rl_i3,           shown: uncorrected}
+  # Motion correction, matched.
+  - {name: mc,                    weights: mc_only,         shown: mc_only}
+  - {name: mc_then_rl,            weights: mc_then_rl_i15,  shown: mc_then_rl_i15}
+  - {name: rl_then_mc,            weights: rl_i15_then_mc,  shown: rl_i15_then_mc}
+  # Motion correction, shown to the networks trained on uncorrected images.
+  - {name: mc_forward_shift,          weights: uncorrected, shown: mc_only}
+  - {name: mc_then_rl_forward_shift,  weights: uncorrected, shown: mc_then_rl_i15}
+  - {name: rl_then_mc_forward_shift,  weights: uncorrected, shown: rl_i15_then_mc}
+
+evaluation:
+  # A run whose lowest validation loss stayed above this never left the
+  # initial loss plateau (validation loss about 3); it is left out of both
+  # estimands. The highest best validation loss of the other runs is 1.89.
+  converged_val_loss: 2.0
+  # Paired comparisons. Each family is compared against its own reference and
+  # is its own Holm family, so adding a question in one family never moves a
+  # p-value in another.
+  comparison_families:
+    - {family: retrained,     reference: baseline, conditions: [rl, rvc]}
+    - {family: motion,        reference: baseline, conditions: [mc, mc_then_rl, rl_then_mc]}
+    - {family: forward_shift, reference: baseline,
+       conditions: [rl_forward_shift, rvc_forward_shift, mc_forward_shift,
+                    mc_then_rl_forward_shift, rl_then_mc_forward_shift]}
+    - {family: rl_reverse_shift,  reference: rl,  conditions: [rl_reverse_shift]}
+    - {family: rvc_reverse_shift, reference: rvc, conditions: [rvc_reverse_shift]}
+    - {family: sensitivity,   reference: baseline,
+       conditions: [rl_k10_forward_shift, rl_k20_forward_shift, rl_psf090_forward_shift,
+                    rl_psf110_forward_shift, rvc_k10_forward_shift, rvc_k20_forward_shift,
+                    rvc_psf090_forward_shift, rvc_psf110_forward_shift]}
+    # Pre-registered RL k = 3 (one family each, so no earlier p-value moves).
+    - {family: rl_k3,               reference: baseline, conditions: [rl_k3]}
+    - {family: rl_k3_forward_shift, reference: baseline, conditions: [rl_k3_forward_shift]}
+    - {family: rl_k3_reverse_shift, reference: rl_k3,    conditions: [rl_k3_reverse_shift]}
+  # Curve metrics that are tested.
+  tested_metrics: [rmse, nrmse, mae, r2, auc_ratio, ccc, pearson_r]
+  n_bootstrap: 10000
+  n_permutations: 10000
+  random_seed: 42
+
+kinetics:
+  # Tissue curves the models are fitted to (VOI_SUV files). The liver is left
+  # out: it is part of the group's IDIF method, and hepatic FDG is not trapped.
+  vois: [Brain, Myocardium]
+  # Two-tissue compartment model with k4 = 0, the assumption Patlak also makes.
+  # false fits the reversible model (k4 free) instead.
+  irreversible: true
+  # Both the measured and the predicted input are whole blood; they are turned
+  # into plasma with the mouse FDG plasma-to-whole-blood ratio of
+  # Wu et al., J Nucl Med 48:837 (2007), Eq. 5: R(t) = a exp(-b t) + c, t in min.
+  plasma_ratio_a: 0.386
+  plasma_ratio_b: 0.191
+  plasma_ratio_c: 1.165
+
+figures:
+  # Scan used for every single-scan illustration: the one closest to the cohort
+  # median baseline RMSE among the scans that needed no padding.
+  example_scan: AX4
+  # Width of the field shown around the brightest structure in the image figure
+  # (its frame and position are chosen by 09_figures.figure_example_pvc_image).
+  example_field_mm: 12.5

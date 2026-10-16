@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.venv/
+.ipynb_checkpoints/
+
+# Lokal konfigurasjon (ekte stier)
+configs/local.yaml
+
+# Genererte klyngejobber
+cluster/jobs/
+
+# Sikring: data, modeller og resultater skal aldri inn
+*.pt
+*.pth
+*.nii
+*.nii.gz
+*.dcm
+*.npy
+*.npz
+*.h5
+*.mat
+*.csv
+*.pdf
+*.png
+
+# Editor/OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

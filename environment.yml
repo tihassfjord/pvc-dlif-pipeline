@@ -1,0 +1,11 @@
+# Conda environment for the pipeline. Conda provides Python and PETPVC (a C++
+# program); the Python packages are installed with uv into the same
+# environment (see README.md, "Installation"). The exact versions used for the
+# thesis are in requirements-lock.txt.
+name: pvc-dlif-pipeline
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - petpvc
+  - uv

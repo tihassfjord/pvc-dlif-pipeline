@@ -1,0 +1,48 @@
+# Kubernetes job running stage 05 inside a bundle made by cluster/make_bundle.py.
+# Filled in by cluster/write_job.sh; not submitted directly.
+kind: Job
+apiVersion: batch/v1
+metadata:
+  name: __JOB_NAME__
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: train
+        image: "pytorch/pytorch:2.4.0-cuda12.1-cudnn9-runtime"
+        env:
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        - name: OMP_NUM_THREADS
+          value: "2"
+        workingDir: __BUNDLE__
+        command: ["/bin/sh", "-c"]
+        args:
+        - >
+          pip install -q -e code &&
+          python code/scripts/05_train.py --config code/configs/study_cluster.yaml __TRAIN_ARGUMENTS__
+        resources:
+          requests:
+            cpu: 500m
+            memory: 4Gi
+            nvidia.com/gpu: 1
+          limits:
+            cpu: 2
+            memory: 12Gi
+            nvidia.com/gpu: 1
+        volumeMounts:
+        - name: storage
+          mountPath: /storage
+        - name: dshm
+          mountPath: /dev/shm
+      volumes:
+      - name: storage
+        persistentVolumeClaim:
+          claimName: storage
+      - name: dshm
+        emptyDir:
+          medium: Memory
+      nodeSelector:
+        kubernetes.io/hostname: __NODE__

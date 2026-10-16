@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pvc-dlif-pipeline"
+version = "1.0.0"
+description = "Partial volume correction and deep learning-derived input functions in mouse FDG PET (FYS-3941 master thesis)"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Tor-Ivar Hassfjord" }]
+dependencies = [
+    "numpy>=2",  # the network input pickles are written with numpy 2
+    "scipy",
+    "pandas",
+    "pyyaml",
+    "pydicom",
+    "nibabel",
+    "matplotlib",
+    "scikit-learn",
+]
+
+[project.optional-dependencies]
+# Needed for training and prediction (stages 05 and 06).
+torch = ["torch"]
+# Running the tests in tests/ (python -m pytest).
+test = ["pytest"]
+
+[tool.setuptools]
+packages = ["pvc_dlif_pipeline"]
