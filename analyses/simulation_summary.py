@@ -53,6 +53,20 @@ for col, title in (("regional_fit", "regional Ki error [%] (one fit to the hot m
 fig, axs = plt.subplots(1, 2, figsize=(10, 4))
 scans = sorted({r["scan"] for r in rows})
 colors = dict(zip(scans, plt.cm.tab10.colors))
+
+
+def style(r0):
+    """Realistic runs (noise, sharp truth): scan colour, solid, filled. Extra noise seeds: same, thin and faint.
+    The two AA1 controls: black, open markers, each its own line style and marker."""
+    if r0["truth"] == "native":
+        return dict(color="k", ls=":", marker="^", mfc="white", lw=1.0, alpha=0.9)
+    if r0["noise"] == "0":
+        return dict(color="k", ls="--", marker="s", mfc="white", lw=1.0, alpha=0.9)
+    if r0["seed"] != "1":
+        return dict(color=colors[r0["scan"]], ls="-", marker="o", mfc=colors[r0["scan"]], lw=0.6, alpha=0.35)
+    return dict(color=colors[r0["scan"]], ls="-", marker="o", mfc=colors[r0["scan"]], lw=1.0, alpha=0.9)
+
+
 for ax, col, title in ((axs[0], "regional_fit", "Regional Ki error [%]\n(one fit to the mean curve, as in the thesis)"),
                        (axs[1], "abs_hot", "Voxel |Ki error| [%]\n(hot voxels, median)")):
     for k, run in enumerate(runs):
@@ -60,15 +74,14 @@ for ax, col, title in ((axs[0], "regional_fit", "Regional Ki error [%]\n(one fit
         r0 = next(iter(rr.values()))
         x = np.arange(len(ORDER)) + (k - len(runs) / 2) * 0.03
         y = [rr[i][col] if i in rr else np.nan for i in ORDER]
-        real = r0["noise"] == "1" and r0["truth"] == "rl_i15"
-        ax.plot(x, y, marker="o", color=colors[r0["scan"]], ms=4, lw=0.8, alpha=0.9 if real else 0.5,
-                mfc=colors[r0["scan"]] if real else "white", ls="-" if real else "--")
+        ax.plot(x, y, ms=4, **style(r0))
     ax.axhline(0, color="0.5", lw=0.8)
     ax.set_xticks(range(len(ORDER)), [LABEL[i] for i in ORDER])
     ax.set_title(title, fontsize=10)
-handles = [plt.Line2D([], [], color=colors[s], marker="o", label=s) for s in scans]
-handles += [plt.Line2D([], [], color="0.3", marker="o", ls="-", label="realistic (noise, sharp truth)"),
-            plt.Line2D([], [], color="0.3", marker="o", mfc="white", ls="--", label="control (no noise / smooth truth)")]
+handles = [plt.Line2D([], [], color=colors[s], marker="o", label=f"{s} realistic (noise, sharp truth)") for s in scans]
+handles += [plt.Line2D([], [], color=colors["AA1"], marker="o", lw=0.6, alpha=0.35, label="AA1, noise seeds 2 and 3"),
+            plt.Line2D([], [], color="k", marker="s", mfc="white", ls="--", label="AA1 control: no noise"),
+            plt.Line2D([], [], color="k", marker="^", mfc="white", ls=":", label="AA1 control: smooth truth (uncorrected)")]
 axs[0].legend(handles=handles, fontsize=7, loc="lower right")
 fig.suptitle("Simulation with known Ki: PETPVC on blurred + noisy images", fontsize=11)
 fig.tight_layout()
