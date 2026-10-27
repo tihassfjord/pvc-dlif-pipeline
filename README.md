@@ -18,7 +18,7 @@ stages, so every stage can be checked on its own.
 
 ## What you need
 
-The data and two code dependencies are not part of this repository.
+The data and the code dependencies below are not part of this repository.
 
 | What | Where it comes from | Used in |
 |---|---|---|
@@ -28,6 +28,7 @@ The data and two code dependencies are not part of this repository.
 | pyPET (kinetic models) | https://github.com/Kuttner/pyPET, GPL-3 | 08 |
 | PETPVC | conda-forge (`petpvc`) | 02, 03 |
 | FALCON (motion correction) | PyPI (`falconz`) | 03 |
+| KinePET (compartment model fitter, C. Salomonsen) | Not public; available on request from C. Salomonsen | KinePET analyses only |
 | A CUDA GPU | | 05 (training); 06 runs on a CPU too |
 
 pyPET is GPL-3 and this repository is MIT, so pyPET is loaded at run time
@@ -103,6 +104,79 @@ question, reads only the outputs of the stages, and writes to
 
 `dead_units.py` needs the trained weights and the group's code; the others
 read only result files. `summary_table.py` runs last.
+
+### KinePET analyses (exploratory)
+
+These reproduce the voxelwise kinetics and the simulation with known parameters
+in the thesis (Sections *Cross-Check with a Second Fitting Tool* and *Voxelwise
+Kinetics and a Simulation with Known Parameters*). They were defined after the
+main results had been seen and are exploratory. KinePET is not part of this
+repository and is run in its own environment, which needs `kinepet`, `numpy`,
+`scipy`, `nibabel`, `matplotlib` and `pyyaml`; nothing from KinePET is copied
+in. Paths and the point spread function are read from `--config` (default
+`configs/local.yaml`), and everything is written to `<work>/analyses/kinepet/`.
+Run them after stage 08; the PVC step of the simulation runs in this
+repository's environment, with PETPVC exactly as in stage 02.
+
+| Script | Environment | Question | In the thesis |
+|---|---|---|---|
+| `kinepet_vs_pypet_measured.py` | KinePET | Do KinePET and pyPET give the same compartment parameters with the measured input? | Results, KinePET cross-check (text) |
+| `kinepet_vs_pypet_predicted.py` | KinePET | Do they give the same $K_i$ error for the predicted inputs? | Table of the KinePET cross-check |
+| `kinepet_voxelwise_test.py` | KinePET | How does voxelwise PVC change voxelwise fits on the measured scans? | Table of voxelwise fits on the measured scans |
+| `kinepet_simulation_pvc.py --step make` | KinePET | Build the truth (known parameters) and a blurred, noisy measurement of it | Simulation |
+| `simulation_apply_petpvc.py` | this repository | Correct the simulated measurement with PETPVC (RL and RVC, k = 3 and 15) | Simulation |
+| `kinepet_simulation_pvc.py --step evaluate` | KinePET | Fit the corrected series and compare $K_i$ with the truth | Simulation |
+| `simulation_summary.py` | KinePET | Collect all simulation runs into one table and figure | Simulation table and figure |
+
+The simulation, for one scan (the thesis uses AA1, AB3, AV1 and M3; the
+controls `--noise 0`, `--truth-image native` and `--seed 2`/`3` on AA1 go on
+both the `make` and the `evaluate` call):
+
+```
+# KinePET environment, from the repository folder
+python analyses/kinepet_simulation_pvc.py --step make --scan AA1 --config configs/local.yaml
+# this repository's environment
+python analyses/simulation_apply_petpvc.py --folder <work>/analyses/kinepet/simulation/AA1_rl_i15_noise1
+# KinePET environment
+python analyses/kinepet_simulation_pvc.py --step evaluate --scan AA1 --config configs/local.yaml
+python analyses/simulation_summary.py --config configs/local.yaml
+```
+
+The noise of the simulation is drawn from a fixed seed, so a rerun reproduces
+the thesis numbers exactly on the same platform.
+
+### Training against Ki (exploratory)
+
+These reproduce Appendix B of the thesis: FC-DLIF trained with the tissue
+curves (VOI TACs) of the same scan, and a ridge regression from the tissue
+curves alone. They were defined after the main results and are exploratory.
+Settings are in the `kiloss` section of the configuration; everything else is
+the thesis training protocol (folds, run seeds, validation split, epochs).
+The models are written to `<work>/models_kiloss/<arm>/` and the tables to
+`<work>/analyses/kiloss/`. Run them after stage 08.
+
+| Script | Environment | Question | In the thesis |
+|---|---|---|---|
+| `kiloss_train.py --arm control/hybrid/aux/kiloss` | this repository, GPU | Train FC-DLIF unchanged (control), with the curves as input (hybrid), with a curve head (aux) or with a Patlak $K_i$ term in the loss (kiloss) | Appendix B |
+| `kiloss_ridge_curves.py` | this repository | How well does a ridge regression predict the input function from the four tissue curves alone? | Appendix B (text) |
+| `kiloss_ridge_ki.py` | this repository, pyPET | What $K_i$ error does that ridge input give? | Appendix B (text) |
+| `kiloss_evaluate.py` | this repository, pyPET | RMSE, peak and $K_i$ error of each arm against control | Appendix B table |
+| `kiloss_check.py` | KinePET | Does the $K_i$ gain of kiloss hold with the 2TCM fitted by KinePET? | Appendix B table (2TCM row) |
+
+```
+# smoke test (writes to <work>/models_kiloss_smoketest/)
+python analyses/kiloss_train.py --config configs/local.yaml --arm kiloss --folds 1 --runs 1 --epochs 2
+# the thesis: control and kiloss 10 folds x 10 runs, hybrid and aux --runs 1 2
+python analyses/kiloss_train.py --config configs/local.yaml --arm control
+python analyses/kiloss_train.py --config configs/local.yaml --arm kiloss
+python analyses/kiloss_ridge_curves.py --config configs/local.yaml
+python analyses/kiloss_ridge_ki.py --config configs/local.yaml
+python analyses/kiloss_evaluate.py --config configs/local.yaml
+# KinePET environment
+python analyses/kiloss_check.py --config configs/local.yaml
+```
+
+The arms in the thesis were trained on an RTX 3090, one arm per job.
 
 ## Reproducibility
 

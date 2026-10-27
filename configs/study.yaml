@@ -182,6 +182,16 @@ kinetics:
   plasma_ratio_b: 0.191
   plasma_ratio_c: 1.165
 
+
+kiloss:
+  # Exploratory FC-DLIF training with tissue curves (analyses/kiloss_*.py,
+  # thesis Appendix B). Not used by the stages.
+  representation: uncorrected   # network input the arms are trained on
+  lambda_aux: 1.0               # weight of the tissue-curve head (arm aux)
+  lambda_ki: 10.0               # weight of the Patlak Ki term (arm kiloss)
+  ki_fade_epochs: [50, 100]     # Ki term faded in linearly between these epochs
+  t_star_min: 10.0              # Patlak start time in the loss [min]
+
 figures:
   # Scan used for every single-scan illustration: the one closest to the cohort
   # median baseline RMSE among the scans that needed no padding.
