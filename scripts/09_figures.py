@@ -1093,7 +1093,7 @@ def figure_mismatch_anatomy(config, figures_folder):
             split_axis.set_xlim(0, split.loc[names, ["bias_squared", "variance"]].sum(axis=1).max() * 2.3)
             split_axis.set_xlabel("MSE [SUV²]: bias² (dark) + variance between runs (light)")
             split_axis.grid(axis="y", visible=False)
-            split_axis.set_title("C  What kind of error (the ensemble\n    keeps about the dark part)", loc="left")
+            split_axis.set_title("C  MSE: squared bias + run variance", loc="left")
 
             # D: the same comparisons for the three estimands: single run, ensemble, best of 10
             single = comparisons[(network, "single_run")]

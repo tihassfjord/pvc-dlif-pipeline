@@ -50,7 +50,7 @@ for col, title in (("regional_fit", "regional Ki error [%] (one fit to the hot m
     print(f"{'mean, %d scans (realistic)' % len({r['scan'] for r in real}):28s}" + "".join(
         f"{np.mean([r[col] for r in real if r['image'] == i]):10.1f}" for i in ORDER))
 
-fig, axs = plt.subplots(1, 2, figsize=(10, 4))
+fig, axs = plt.subplots(1, 2, figsize=(10, 4.8))
 scans = sorted({r["scan"] for r in rows})
 colors = dict(zip(scans, plt.cm.tab10.colors))
 
@@ -67,7 +67,7 @@ def style(r0):
     return dict(color=colors[r0["scan"]], ls="-", marker="o", mfc=colors[r0["scan"]], lw=1.0, alpha=0.9)
 
 
-for ax, col, title in ((axs[0], "regional_fit", "Regional Ki error [%]\n(one fit to the mean curve, as in the thesis)"),
+for ax, col, title in ((axs[0], "regional_fit", "Regional Ki error [%]\n(one fit to the mean curve of the hot voxels)"),
                        (axs[1], "abs_hot", "Voxel |Ki error| [%]\n(hot voxels, median)")):
     for k, run in enumerate(runs):
         rr = {r["image"]: r for r in rows if r["run"] == run}
@@ -82,9 +82,9 @@ handles = [plt.Line2D([], [], color=colors[s], marker="o", label=f"{s} realistic
 handles += [plt.Line2D([], [], color=colors["AA1"], marker="o", lw=0.6, alpha=0.35, label="AA1, noise seeds 2 and 3"),
             plt.Line2D([], [], color="k", marker="s", mfc="white", ls="--", label="AA1 control: no noise"),
             plt.Line2D([], [], color="k", marker="^", mfc="white", ls=":", label="AA1 control: smooth truth (uncorrected)")]
-axs[0].legend(handles=handles, fontsize=7, loc="lower right")
+fig.legend(handles=handles, fontsize=8, loc="lower center", ncol=4, frameon=False)
 fig.suptitle("Simulation with known Ki: PETPVC on blurred + noisy images", fontsize=11)
-fig.tight_layout()
+fig.tight_layout(rect=(0, 0.14, 1, 1))
 out = OUT / "simulation_pvc_summary.png"
 for attempt in range(5):
     try:
